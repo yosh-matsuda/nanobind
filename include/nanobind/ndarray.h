@@ -161,9 +161,9 @@ template <typename T> struct ndarray_arg<T, enable_if_t<ndarray_traits<T>::is_fl
     static constexpr size_t size = 0;
 
     static constexpr auto name =
-        const_name("dtype=float") +
+        const_name("numpy.dtype[numpy.float") +
         const_name<sizeof(T) * 8>() +
-        const_name<std::is_const_v<T>>(", writable=False", "");
+        const_name<std::is_const_v<T>>("], writable[False]", "]");
 
     static void apply(ndarray_req &tr) {
         tr.dtype = dtype<T>();
@@ -191,10 +191,10 @@ template <typename T> struct ndarray_arg<T, enable_if_t<ndarray_traits<T>::is_in
     static constexpr size_t size = 0;
 
     static constexpr auto name =
-        const_name("dtype=") +
+        const_name("numpy.dtype[numpy.") +
         const_name<std::is_unsigned_v<T>>("u", "") +
         const_name("int") + const_name<sizeof(T) * 8>() +
-        const_name<std::is_const_v<T>>(", writable=False", "");
+        const_name<std::is_const_v<T>>("], writable[False]", "]");
 
     static void apply(ndarray_req &tr) {
         tr.dtype = dtype<T>();
@@ -207,8 +207,8 @@ template <typename T> struct ndarray_arg<T, enable_if_t<ndarray_traits<T>::is_bo
     static constexpr size_t size = 0;
 
     static constexpr auto name =
-        const_name("dtype=bool") +
-        const_name<std::is_const_v<T>>(", writable=False", "");
+        const_name("numpy.dtype[numpy.bool_]") +
+        const_name<std::is_const_v<T>>(", writable[False]", "");
 
     static void apply(ndarray_req &tr) {
         tr.dtype = dtype<T>();
@@ -230,9 +230,9 @@ template<> struct ndarray_arg<ro> {
 template <size_t... Is> struct ndarray_arg<shape<Is...>> {
     static constexpr size_t size = sizeof...(Is);
     static constexpr auto name =
-        const_name("shape=(") +
+        const_name("shape[") +
         concat(const_name<Is == any>(const_name("*"), const_name<Is>())...) +
-        const_name(")");
+        const_name("]");
 
     static void apply(ndarray_req &tr) {
         size_t i = 0;
@@ -244,32 +244,32 @@ template <size_t... Is> struct ndarray_arg<shape<Is...>> {
 
 template <> struct ndarray_arg<c_contig> {
     static constexpr size_t size = 0;
-    static constexpr auto name = const_name("order='C'");
+    static constexpr auto name = const_name("order['C']");
     static void apply(ndarray_req &tr) { tr.req_order = 'C'; }
 };
 
 template <> struct ndarray_arg<f_contig> {
     static constexpr size_t size = 0;
-    static constexpr auto name = const_name("order='F'");
+    static constexpr auto name = const_name("order['F']");
     static void apply(ndarray_req &tr) { tr.req_order = 'F'; }
 };
 
 template <> struct ndarray_arg<any_contig> {
     static constexpr size_t size = 0;
-    static constexpr auto name = const_name("order='*'");
+    static constexpr auto name = const_name("order['*']");
     static void apply(ndarray_req &tr) { tr.req_order = '\0'; }
 };
 
 template <typename T> struct ndarray_arg<T, enable_if_t<T::is_device>> {
     static constexpr size_t size = 0;
-    static constexpr auto name = const_name("device='") + T::name + const_name('\'');
+    static constexpr auto name = const_name("device['") + T::name + const_name('\']');
     static void apply(ndarray_req &tr) { tr.req_device = (uint8_t) T::value; }
 };
 
 template <typename... Ts> struct ndarray_info {
     using scalar_type = void;
     using shape_type = void;
-    constexpr static auto name = const_name("ndarray");
+    constexpr static auto name = const_name("numpy.ndarray");
     constexpr static ndarray_framework framework = ndarray_framework::none;
     constexpr static char order = '\0';
 };
@@ -561,9 +561,9 @@ inline bool ndarray_check(handle h) { return detail::ndarray_check(h.ptr()); }
 NAMESPACE_BEGIN(detail)
 
 template <typename... Args> struct type_caster<ndarray<Args...>> {
-    NB_TYPE_CASTER(ndarray<Args...>, Value::Info::name + const_name("[") +
+    NB_TYPE_CASTER(ndarray<Args...>, Value::Info::name + const_name<sizeof...(Args) != 0>("[Any, ", "") +
                                         concat_maybe(detail::ndarray_arg<Args>::name...) +
-                                        const_name("]"))
+                                        const_name<sizeof...(Args) != 0>("]", ""))
 
     bool from_python(handle src, uint8_t flags, cleanup_list *cleanup) noexcept {
         constexpr size_t size = (0 + ... + detail::ndarray_arg<Args>::size);
