@@ -6,7 +6,7 @@
     All rights reserved. Use of this source code is governed by a
     BSD-style license that can be found in the LICENSE file.
 */
-
+#include <ranges>
 #include "nb_internals.h"
 #include "buffer.h"
 
@@ -32,7 +32,7 @@ static PyObject *nb_func_vectorcall_simple(PyObject *, PyObject *const *,
                                            size_t, PyObject *) noexcept;
 static PyObject *nb_func_vectorcall_complex(PyObject *, PyObject *const *,
                                             size_t, PyObject *) noexcept;
-static void nb_func_render_signature(const func_data *f) noexcept;
+static std::vector<std::tuple<std::string, std::string, std::string>> nb_func_render_signature(const func_data *f) noexcept;
 
 int nb_func_traverse(PyObject *self, visitproc visit, void *arg) {
     size_t size = (size_t) Py_SIZE(self);
@@ -295,8 +295,8 @@ PyObject *nb_func_new(const void *in_) noexcept {
 
     func_data *fc = nb_func_data(func) + to_copy;
     memcpy(fc, f, sizeof(func_data_prelim<0>));
-    if (has_doc && fc->doc[0] == '\n')
-        fc->doc++;
+    if (has_doc && fc->doc->summary[0] == '\n')
+        fc->doc->summary = fc->doc->summary.substr(1);
 
     if (is_constructor)
         fc->flags |= (uint32_t) func_flags::is_constructor;
@@ -853,7 +853,8 @@ PyObject *nb_method_descr_get(PyObject *self, PyObject *inst, PyObject *) {
 
 
 /// Render the function signature of a single function
-static void nb_func_render_signature(const func_data *f) noexcept {
+static std::vector<std::tuple<std::string, std::string, std::string>>
+    nb_func_render_signature(const func_data *f) noexcept {
     const bool is_method      = f->flags & (uint32_t) func_flags::is_method,
                has_args       = f->flags & (uint32_t) func_flags::has_args,
                has_var_args   = f->flags & (uint32_t) func_flags::has_var_args,
@@ -862,6 +863,11 @@ static void nb_func_render_signature(const func_data *f) noexcept {
     const std::type_info **descr_type = f->descr_types;
 
     uint32_t arg_index = 0;
+    auto arg_name_str = std::string{};
+    auto arg_type = std::string{};
+    auto arg_defv = std::string{};
+    auto result = std::vector<std::tuple<std::string, std::string, std::string>>{};
+    auto writing_type = false;
     buf.put_dstr(f->name);
 
     for (const char *pc = f->descr; *pc != '\0'; ++pc) {
@@ -876,6 +882,13 @@ static void nb_func_render_signature(const func_data *f) noexcept {
                     if (has_var_kwargs && arg_index + 1 == f->nargs) {
                         buf.put("**");
                         buf.put_dstr(arg_name ? arg_name : "kwargs");
+                        arg_name_str += "**";
+                        arg_name_str += arg_name ? arg_name : "kwargs";
+                        if (*f->args_type != '\0') {
+                            buf.put(": ");
+                            buf.put_dstr(f->args_type);
+                            arg_type += f->args_type;
+                        }
                         pc += 4; // strlen("dict")
                         break;
                     }
@@ -883,6 +896,13 @@ static void nb_func_render_signature(const func_data *f) noexcept {
                     if (has_var_args && arg_index + 1 + has_var_kwargs == f->nargs) {
                         buf.put("*");
                         buf.put_dstr(arg_name ? arg_name : "args");
+                        arg_name_str += "*";
+                        arg_name_str += arg_name ? arg_name : "args";
+                        if (*f->args_type != '\0') {
+                            buf.put(": ");
+                            buf.put_dstr(f->args_type);
+                            arg_type += f->args_type;
+                        }
                         pc += 5; // strlen("tuple")
                         break;
                     }
@@ -900,23 +920,32 @@ static void nb_func_render_signature(const func_data *f) noexcept {
                         continue;
                     } else if (arg_name) {
                         buf.put_dstr(arg_name);
+                        arg_name_str += arg_name;
                     } else {
                         buf.put("arg");
-                        if (f->nargs > 1 + (uint32_t) is_method)
+                        arg_name_str += "arg";
+                        if (f->nargs > 1 + (uint32_t) is_method) {
                             buf.put_uint32(arg_index - is_method);
+                            arg_name_str += std::to_string(arg_index - (uint32_t) is_method);
+                        }
                     }
 
                     buf.put(": ");
-                    if (has_args && f->args[arg_index].none)
+                    writing_type = true;
+                    if (has_args && f->args[arg_index].none) {
                         buf.put("Optional[");
+                        arg_type += "Optional[";
+                    }
                 }
                 break;
 
             case '}':
                 // Default argument
                 if (has_args) {
-                    if (f->args[arg_index].none)
+                    if (f->args[arg_index].none) {
                         buf.put(']');
+                        arg_type += "]";
+                    }
 
                     if (f->args[arg_index].value) {
                         PyObject *o = f->args[arg_index].value;
@@ -931,11 +960,17 @@ static void nb_func_render_signature(const func_data *f) noexcept {
                                 PyErr_Clear();
                             } else {
                                 buf.put(" = ");
-                                if (is_str)
+                                writing_type = false;
+                                if (is_str) {
                                     buf.put('\'');
+                                    arg_defv += '\'';
+                                }
                                 buf.put(cstr, (size_t) size);
-                                if (is_str)
+                                arg_defv += std::string_view(cstr, size);
+                                if (is_str) {
                                     buf.put('\'');
+                                    arg_defv += '\'';
+                                }
                             }
                             Py_DECREF(str);
                         } else {
@@ -944,6 +979,11 @@ static void nb_func_render_signature(const func_data *f) noexcept {
                     }
                 }
 
+                if(arg_name_str != "self") result.emplace_back(arg_name_str, arg_type, arg_defv);
+                arg_name_str.clear();
+                arg_type.clear();
+                arg_defv.clear();
+                writing_type = false;
                 arg_index++;
 
                 if (arg_index == f->nargs - has_var_args - has_var_kwargs && !has_args)
@@ -963,9 +1003,13 @@ static void nb_func_render_signature(const func_data *f) noexcept {
                         buf.put_dstr((borrow<str>(th.attr("__module__"))).c_str());
                         buf.put('.');
                         buf.put_dstr((borrow<str>(th.attr("__qualname__"))).c_str());
+                        arg_type += (borrow<str>(th.attr("__module__"))).c_str();
+                        arg_type += ".";
+                        arg_type += (borrow<str>(th.attr("__qualname__"))).c_str();
                     } else {
                         char *name = type_name(*descr_type);
                         buf.put_dstr(name);
+                        arg_type += name;
                         free(name);
                     }
                 }
@@ -975,6 +1019,7 @@ static void nb_func_render_signature(const func_data *f) noexcept {
 
             default:
                 buf.put(c);
+                if (writing_type) arg_type += c;
                 break;
         }
     }
@@ -982,6 +1027,8 @@ static void nb_func_render_signature(const func_data *f) noexcept {
     check(arg_index == f->nargs && !*descr_type,
           "nanobind::detail::nb_func_render_signature(%s): arguments inconsistent.",
           f->name);
+
+    return result;
 }
 
 static PyObject *nb_func_get_name(PyObject *self) {
@@ -1022,7 +1069,8 @@ static PyObject *nb_func_get_module(PyObject *self) {
     }
 }
 
-PyObject *nb_func_get_doc(PyObject *self, void *) {
+
+PyObject *nb_func_get_doc_(PyObject *self, void *) {
     func_data *f = nb_func_data(self);
     uint32_t count = (uint32_t) Py_SIZE(self);
 
@@ -1032,11 +1080,11 @@ PyObject *nb_func_get_doc(PyObject *self, void *) {
     for (uint32_t i = 0; i < count; ++i) {
         const func_data *fi = f + i;
         if (fi->flags & (uint32_t) func_flags::raw_doc)
-            return PyUnicode_FromString(fi->doc);
+            return PyUnicode_FromString(fi->doc->summary.c_str());
 
         nb_func_render_signature(fi);
         buf.put('\n');
-        if ((fi->flags & (uint32_t) func_flags::has_doc) && fi->doc[0] != '\0')
+        if ((fi->flags & (uint32_t) func_flags::has_doc) && !fi->doc->summary.empty())
             doc_count++;
     }
 
@@ -1046,7 +1094,7 @@ PyObject *nb_func_get_doc(PyObject *self, void *) {
     for (uint32_t i = 0; i < count; ++i) {
         const func_data *fi = f + i;
 
-        if ((fi->flags & (uint32_t) func_flags::has_doc) && fi->doc[0] != '\0') {
+        if ((fi->flags & (uint32_t) func_flags::has_doc) && !fi->doc->summary.empty()) {
             buf.put('\n');
 
             if (doc_count > 1) {
@@ -1056,13 +1104,428 @@ PyObject *nb_func_get_doc(PyObject *self, void *) {
                 buf.put("``\n\n");
             }
 
-            buf.put_dstr(fi->doc);
+            buf.put_dstr(fi->doc->summary.c_str());
             buf.put('\n');
         }
     }
 
     if (buf.size() > 0) // remove last newline
         buf.rewind(1);
+
+    return PyUnicode_FromString(buf.get());
+}
+
+PyObject *nb_func_get_doc(PyObject *self, void *option) {
+    func_data *f = nb_func_data(self);
+    auto count = (uint32_t) Py_SIZE(self);
+    auto is_property = option != nullptr ? *static_cast<bool*>(option) : false;
+
+    // get signatures
+    auto docstrings_temp = std::vector<docstring>(count);
+    auto sig_strings = std::vector<std::string>();
+    auto signatures = std::vector<std::pair<std::vector<std::tuple<std::string, std::string, std::string>>, std::string>>();
+    sig_strings.reserve(count);
+    for (uint32_t i = 0; i < count; ++i) {
+        func_data *fi = f + i;
+        if ((fi->flags & static_cast<uint32_t>(func_flags::raw_doc)) != 0U)
+            return PyUnicode_FromString(fi->doc->summary.c_str());
+        if ((fi->flags & static_cast<uint32_t>(func_flags::has_doc)) == 0U)
+            fi->doc = &docstrings_temp[i];
+        if (fi->doc->summary.empty()) {
+            fi->doc->summary += fi->name;
+            if (is_property) fi->doc->summary += " property";
+        }
+
+        buf.clear();
+        auto& signature = signatures.emplace_back();
+        signature.first = nb_func_render_signature(fi);
+        const auto& signature_str = sig_strings.emplace_back(buf.get());
+
+        auto rv = signature_str | std::views::split(std::string_view("-> "));
+        auto it = rv.begin();
+        if ((++it) != rv.end()) {
+            signature.second = std::string((*it).begin(), (*it).end());
+        }
+    }
+
+    // clear buffer
+    buf.clear();
+    auto num_nest = 0;
+
+    constexpr auto expand_type_hint = [](auto func, std::string_view type_str) {
+        auto result = std::string();
+
+        if (type_str.empty() || std::ranges::all_of(type_str, [](auto c){ return c == ' '; }))
+            return result;
+
+        // strip
+        if (auto s = type_str.find_first_not_of(' '), e = type_str.find_last_not_of(' ');
+            s != std::string_view::npos && e != std::string_view::npos && s < e) {
+            type_str = std::string_view(type_str.begin() + s, type_str.begin() + e + 1);
+        }
+
+        // Union[...]
+        if (type_str.size() > 8 && type_str.starts_with("Union[") && type_str.ends_with("]")) {
+            type_str = std::string_view(type_str.begin() + 6, type_str.end() - 1);
+            auto bra_count = 0;
+            auto s = type_str.begin();
+            for (auto c = type_str.begin(); c < type_str.end(); ++c) {
+                if (*c == '[') {
+                    ++bra_count;
+                } else if (bra_count > 0 && *c == ']') {
+                    --bra_count;
+                } else if (bra_count == 0 && *c == ',') {
+                    result += func(func, std::string_view(s, c));
+                    result += " | ";
+                    s = c + 1;
+                }
+            }
+            if (s < type_str.end()) {
+                result += func(func, std::string_view(s, type_str.end()));
+            }
+            return result;
+        }
+
+        // Optional[...]
+        if (type_str.size() > 11 && type_str.starts_with("Optional[") && type_str.ends_with("]")) {
+            type_str = std::string_view(type_str.begin() + 9, type_str.end() - 1);
+            result += func(func, type_str);
+            result += " | None";
+            return result;
+        }
+
+        // XXX[...]
+        if (auto s = type_str.find_first_of('['), e = type_str.find_first_of(']');
+            s != std::string_view::npos && e != std::string_view::npos && s < e) {
+            result += std::string(type_str.begin(), type_str.begin() + s + 1);
+            if (result.ends_with("ndarray[")) {
+                // WORKAROUND
+                result.pop_back();
+                return result;
+            }
+
+            const auto body = std::string_view(type_str.begin() + s + 1, type_str.begin() + e);
+            auto bra_count = 0;
+            auto body_s = body.begin();
+            for (auto body_c = body.begin(); body_c < body.end(); ++body_c) {
+                if (*body_c == '[') {
+                    ++bra_count;
+                } else if (bra_count > 0 && *body_c == ']') {
+                    --bra_count;
+                } else if (bra_count == 0 && *body_c == ',') {
+                    result += func(func, std::string_view(body_s, body_c));
+                    result += ", ";
+                    body_s = body_c + 1;
+                }
+            }
+            if (body_s < body.end()) {
+                result += func(func, std::string_view(body_s, body.end()));
+            }
+
+            result += std::string(type_str.begin() + e, type_str.end());
+            return result;
+        }
+
+        return std::string(type_str);
+    };
+
+    // summary
+    const auto put_summary = [&num_nest](const auto& summary, bool leading_eol) {
+        if (!summary.empty()) {
+            if (leading_eol) buf.put('\n');
+            buf.put(' ', 4 * num_nest);
+            for(const auto& line_sr: summary | std::views::split(std::string_view("\n"))) {
+                auto line = std::string_view(line_sr.begin(), line_sr.end());
+                buf.put(line.data(), line.size());
+                buf.put('\n');
+            }
+        }
+    };
+
+    // description
+    const auto put_description = [&num_nest](const auto& docstring) {
+        if (!docstring.desc.empty()) {
+            buf.put('\n');
+            buf.put(' ', 4 * num_nest);
+            buf.put(docstring.desc.c_str(), docstring.desc.size());
+            buf.put('\n');
+        }
+    };
+
+    // Args:
+    const auto put_args = [&num_nest, expand_type_hint](const auto& docstring, const auto& signature, bool admonition = false) {
+        if (!signature.first.empty()) {
+            buf.put('\n');
+            buf.put(' ', 4 * num_nest);
+            // TODO: split
+            buf.put("Args:\n");
+            ++num_nest;
+            for(size_t i = 0; i < signature.first.size(); ++i ) {
+                buf.put(' ', 4 * num_nest);
+                auto arg_str = std::get<0>(signature.first[i]);
+                if (admonition) {
+                    buf.put("* ");
+                    auto escaped_str = std::string();
+                    for (const auto c : arg_str) {
+                        if (c == '*')
+                            escaped_str += '\\';
+                        escaped_str += c;
+                    }
+                    arg_str = std::move(escaped_str);
+                }
+                buf.put(arg_str.c_str(), arg_str.size());
+                if (!std::get<1>(signature.first[i]).empty()) {
+                    buf.put(" (");
+                    const auto type_str = expand_type_hint(expand_type_hint, std::get<1>(signature.first[i]));
+                    buf.put(type_str.c_str(), type_str.size());
+                    buf.put(")");
+                }
+                buf.put(":");
+                if (i < docstring.args.size() && !docstring.args[i].empty()) {
+                    auto is_first_line = true;
+                    ++num_nest;
+                    for(const auto& line_sr: docstring.args[i] | std::views::split(std::string_view("\n"))) {
+                        if (is_first_line) buf.put(' ');
+                        else {
+                            buf.put('\n');
+                            buf.put(' ', 4 * num_nest);
+                        }
+                        auto line = std::string_view(line_sr.begin(), line_sr.end());
+                        buf.put(line.data(), line.size());
+                        is_first_line = false;
+                    }
+                    --num_nest;
+                }
+                if (!std::get<2>(signature.first[i]).empty()) {
+                    buf.put(" Defaults to ``");
+                    buf.put(std::get<2>(signature.first[i]).c_str(), std::get<2>(signature.first[i]).size());
+                    buf.put("``.");
+                }
+                buf.put('\n');
+            }
+            --num_nest;
+        }
+    };
+
+    // Returns:
+    const auto put_returns = [&num_nest, expand_type_hint](const auto& docstring, const auto& signature) {
+        if ((!signature.second.empty() && signature.second != "None") || !docstring.returns.empty() || !docstring.returns_desc.empty()) {
+            buf.put('\n');
+            buf.put(' ', 4 * num_nest);
+            buf.put("Returns:\n");
+            ++num_nest;
+            if (!signature.second.empty() || !docstring.returns.empty()) {
+                if (!signature.second.empty()) {
+                    buf.put(' ', 4 * num_nest);
+                    const auto type_str = expand_type_hint(expand_type_hint, signature.second);
+                    buf.put(type_str.c_str(), type_str.size());
+                    buf.put(":");
+                }
+                if (!docstring.returns.empty()) {
+                    buf.put(' ');
+                    auto is_first_line = true;
+                    ++num_nest;
+                    for(const auto& line_sr: docstring.returns | std::views::split(std::string_view("\n"))) {
+                        if (!is_first_line) {
+                            buf.put(' ', 4 * num_nest);
+                        }
+                        auto line = std::string_view(line_sr.begin(), line_sr.end());
+                        buf.put(line.data(), line.size());
+                        buf.put('\n');
+                        is_first_line = false;
+                    }
+                    --num_nest;
+                } else if (!signature.second.empty()) {
+                    buf.put('\n');
+                }
+                if (!docstring.returns_desc.empty()) {
+                    buf.put('\n');
+                }
+            }
+            if (!docstring.returns_desc.empty()) {
+                for(const auto& line_sr: docstring.returns_desc | std::views::split(std::string_view("\n"))) {
+                    buf.put(' ', 4 * num_nest);
+                    auto line = std::string_view(line_sr.begin(), line_sr.end());
+                    buf.put(line.data(), line.size());
+                    buf.put('\n');
+                }
+            }
+            --num_nest;
+        }
+    };
+
+    // Raises:
+    const auto put_raises = [&num_nest](const auto& docstring) {
+        if (!docstring.raises.empty()) {
+            buf.put('\n');
+            buf.put(' ', 4 * num_nest);
+            buf.put("Raises:\n");
+            ++num_nest;
+            for(const auto& [err, desc] : docstring.raises) {
+                if (err.empty()) continue;
+                buf.put(' ', 4 * num_nest);
+                buf.put(err.c_str(), err.size());
+                buf.put(":");
+                if (!desc.empty()) {
+                    buf.put(' ');
+                    auto is_first_line = true;
+                    ++num_nest;
+                    for(const auto& line_sr: desc | std::views::split(std::string_view("\n"))) {
+                        if (!is_first_line) {
+                            buf.put(' ', 4 * num_nest);
+                        }
+                        auto line = std::string_view(line_sr.begin(), line_sr.end());
+                        buf.put(line.data(), line.size());
+                        buf.put('\n');
+                        is_first_line = false;
+                    }
+                    --num_nest;
+                } else {
+                    buf.put('\n');
+                }
+            }
+            --num_nest;
+        }
+    };
+
+    // Note:
+    const auto put_note = [&num_nest](const auto& docstring) {
+        if (!docstring.note.empty()) {
+            buf.put('\n');
+            buf.put(' ', 4 * num_nest);
+            buf.put("Note:\n");
+            ++num_nest;
+            for(const auto& line_sr: docstring.note | std::views::split(std::string_view("\n"))) {
+                buf.put(' ', 4 * num_nest);
+                auto line = std::string_view(line_sr.begin(), line_sr.end());
+                buf.put(line.data(), line.size());
+                buf.put('\n');
+            }
+            --num_nest;
+        }
+    };
+
+    // Example:
+    const auto put_example = [&num_nest](const auto& docstring) {
+        if (!docstring.example.empty()) {
+            buf.put('\n');
+            buf.put(' ', 4 * num_nest);
+            buf.put("Example:\n");
+            ++num_nest;
+            for(const auto& line_sr: docstring.example | std::views::split(std::string_view("\n"))) {
+                buf.put(' ', 4 * num_nest);
+                auto line = std::string_view(line_sr.begin(), line_sr.end());
+                buf.put(line.data(), line.size());
+                buf.put('\n');
+            }
+            --num_nest;
+        }
+    };
+
+    // extra
+    const auto put_extra = [&num_nest](const auto& docstring) {
+        if (!docstring.extra.empty()) {
+            buf.put('\n');
+            buf.put(' ', 4 * num_nest);
+            for(const auto& line_sr: docstring.extra | std::views::split(std::string_view("\n"))) {
+                buf.put(' ', 4 * num_nest);
+                auto line = std::string_view(line_sr.begin(), line_sr.end());
+                buf.put(line.data(), line.size());
+                buf.put('\n');
+            }
+        }
+    };
+
+
+    // output signatures
+    if (!is_property) {
+        for(const auto& s : sig_strings) {
+            buf.put(s.c_str(), s.size());
+            buf.put('\n');
+        }
+    }
+
+    // skip "__init__(self)"
+    uint32_t skip_idx = count;
+    for (uint32_t i = 0; i < count; ++i) {
+        if (sig_strings[i].starts_with("__init__(self)")) {
+            skip_idx = i;
+            break;
+        }
+    }
+
+    // google style docstring
+    if (count == 1 || (count == 2 && skip_idx < count)) {
+        auto i = count == 2 ? 1 - skip_idx : 0;
+        const auto& docstring = *((f + i)->doc);
+        const auto& signature = signatures[i];
+        put_summary(docstring.summary, !is_property);
+        put_description(docstring);
+        put_args(docstring, signature);
+        put_returns(docstring, signature);
+        put_raises(docstring);
+        put_note(docstring);
+        put_example(docstring);
+        put_extra(docstring);
+    } else {
+        // concat summary
+        {
+            auto summary = f->doc->summary;
+            for (uint32_t i = 1; i < count; ++i) {
+                const auto& docstring = *((f + i)->doc);
+                if (docstring.summary.empty() || summary == docstring.summary)
+                    continue;
+                if (!summary.empty()) summary += " ";
+                summary += docstring.summary;
+            }
+            put_summary(summary, !is_property);
+        }
+
+        // concat description
+        for (uint32_t i = 0; i < count; ++i) {
+            put_description(*((f + i)->doc));
+        }
+
+        // Overloads
+        buf.put('\n');
+        buf.put(' ', 4 * num_nest);
+        buf.put(":Overloading:\n\n");
+        for (uint32_t i = 0, j = 0; i < count; ++i) {
+            //if (i == skip_idx) continue;
+            const auto& docstring = *((f + i)->doc);
+            const auto& signature = signatures[i];
+            if (j != 0) buf.put('\n');
+            buf.put(".. admonition:: ");
+            buf.put_uint32(j + 1);
+            buf.put(". ");
+            auto sig_str = std::string();
+            for (const auto c : sig_strings[i]) {
+                if (c == '*')
+                    sig_str += '\\';
+                sig_str += c;
+            }
+            buf.put(sig_str.c_str(), sig_str.size());
+            buf.put("\n");
+            ++num_nest;
+            put_args(docstring, signature, true);
+            put_returns(docstring, signature);
+            put_raises(docstring);
+            --num_nest;
+            ++j;
+        }
+        for (uint32_t i = 0; i < count; ++i) {
+            const auto& docstring = *((f + i)->doc);
+            put_note(docstring);
+        }
+        for (uint32_t i = 0; i < count; ++i) {
+            const auto& docstring = *((f + i)->doc);
+            put_example(docstring);
+        }
+        for (uint32_t i = 0; i < count; ++i) {
+            const auto& docstring = *((f + i)->doc);
+            put_extra(docstring);
+        }
+    }
 
     return PyUnicode_FromString(buf.get());
 }

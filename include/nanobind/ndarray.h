@@ -262,7 +262,7 @@ template <> struct ndarray_arg<any_contig> {
 
 template <typename T> struct ndarray_arg<T, enable_if_t<T::is_device>> {
     static constexpr size_t size = 0;
-    static constexpr auto name = const_name("device['") + T::name + const_name('\']');
+    static constexpr auto name = const_name("device['") + T::name + const_name("']");
     static void apply(ndarray_req &tr) { tr.req_device = (uint8_t) T::value; }
 };
 
