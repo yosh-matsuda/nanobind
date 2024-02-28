@@ -803,6 +803,7 @@ PyObject **seq_get_with_size(PyObject *seq, size_t size,
 }
 
 // ========================================================================
+extern PyObject *nb_func_get_doc(PyObject *, void *);
 
 static void property_install_impl(PyTypeObject *tp, PyObject *scope,
                                   const char *name, PyObject *getter,
@@ -813,8 +814,9 @@ static void property_install_impl(PyTypeObject *tp, PyObject *scope,
     if (m && (Py_TYPE(m) == internals->nb_func ||
               Py_TYPE(m) == internals->nb_method)) {
         func_data *f = nb_func_data(m);
-        if (f->flags & (uint32_t) func_flags::has_doc)
-            doc = str(f->doc);
+        f->name = strdup_check(name);
+        auto is_property = true;
+        doc = str(nb_func_get_doc(m, &is_property));
     }
 
     handle(scope).attr(name) = handle(tp)(
