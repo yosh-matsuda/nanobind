@@ -593,7 +593,6 @@ inline void print(const char *str, handle end = handle(), handle file = handle()
     print(nanobind::str(str), end, file);
 }
 
-inline object none() { return borrow(Py_None); }
 inline dict builtins() { return borrow<dict>(PyEval_GetBuiltins()); }
 
 inline iterator iter(handle h) {
@@ -630,6 +629,30 @@ class ellipsis : public object {
 public:
     NB_OBJECT(ellipsis, object, "EllipsisType", is_ellipsis)
     ellipsis() : object(Py_Ellipsis, detail::borrow_t()) {}
+};
+
+class true_ : public object {
+    static bool is_true(PyObject *obj) { return obj == Py_True; }
+
+public:
+    NB_OBJECT(true_, object, "Literal[True]", is_true)
+    true_() : object(Py_True, detail::borrow_t()) {}
+};
+
+class false_ : public object {
+    static bool is_false(PyObject *obj) { return obj == Py_False; }
+
+public:
+    NB_OBJECT(false_, object, "Literal[False]", is_false)
+    false_() : object(Py_False, detail::borrow_t()) {}
+};
+
+class none : public object {
+    static bool is_none(PyObject *obj) { return obj == Py_None; }
+
+public:
+    NB_OBJECT(none, object, "Literal[None]", is_none)
+    none() : object(Py_None, detail::borrow_t()) {}
 };
 
 class not_implemented : public object {
