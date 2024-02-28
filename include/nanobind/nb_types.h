@@ -527,7 +527,7 @@ public:
     using reference = const handle;
     using pointer = const handle *;
 
-    NB_OBJECT_DEFAULT(iterator, object, "iterator", PyIter_Check)
+    NB_OBJECT_DEFAULT(iterator, object, "Iterator", PyIter_Check)
 
     iterator& operator++() {
         m_value = steal(detail::obj_iter_next(m_ptr));
