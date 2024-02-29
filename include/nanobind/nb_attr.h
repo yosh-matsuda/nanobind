@@ -6,6 +6,9 @@
     All rights reserved. Use of this source code is governed by a
     BSD-style license that can be found in the LICENSE file.
 */
+#include <string>
+#include <vector>
+#include <memory>
 
 NAMESPACE_BEGIN(NB_NAMESPACE)
 
@@ -88,11 +91,29 @@ struct sig {
 
 struct is_getter { };
 
+struct args_type {
+    const char *value;
+    args_type(const char *type) : value(type) {}
+};
+
+struct docstring {
+    std::string summary = {};
+    std::string desc = {};
+    std::vector<std::string> args = {};
+    std::string returns = {};
+    std::string returns_desc = {};
+    std::vector<std::pair<std::string, std::string>> raises = {};
+    std::string note = {};
+    std::string example = {};
+    std::string extra = {};
+};
+
 NAMESPACE_BEGIN(literals)
 constexpr arg operator"" _a(const char *name, size_t) { return arg(name); }
 NAMESPACE_END(literals)
 
 NAMESPACE_BEGIN(detail)
+inline std::vector<std::shared_ptr<docstring>> docstring_pool;
 
 enum class func_flags : uint32_t {
     /* Low 3 bits reserved for return value policy */
@@ -162,7 +183,8 @@ template <size_t Size> struct func_data_prelim {
     // ------- Extra fields -------
 
     const char *name;
-    const char *doc;
+    docstring *doc;
+    const char *args_type = "";
     PyObject *scope;
 
     // *WARNING*: nanobind regularly receives requests from users who run it
@@ -219,9 +241,26 @@ NB_INLINE void func_extra_apply(F &f, const sig &s, size_t &) {
 }
 
 template <typename F>
+NB_INLINE void func_extra_apply(F &f, const args_type &d, size_t &) {
+    f.args_type = d.value;
+}
+
+template <typename F>
 NB_INLINE void func_extra_apply(F &f, const char *doc, size_t &) {
-    f.doc = doc;
     f.flags |= (uint32_t) func_flags::has_doc;
+    f.doc = detail::docstring_pool.emplace_back(std::make_shared<docstring>(docstring{.summary=doc})).get();
+}
+
+template <typename F>
+NB_INLINE void func_extra_apply(F &f, docstring d, size_t &) {
+    f.flags |= (uint32_t) func_flags::has_doc;
+    f.doc = detail::docstring_pool.emplace_back(std::make_shared<docstring>(std::move(d))).get();
+}
+
+template <typename F>
+NB_INLINE void func_extra_apply(F &f, docstring *d, size_t &) {
+    f.flags |= (uint32_t) func_flags::has_doc;
+    f.doc = d;
 }
 
 template <typename F>
