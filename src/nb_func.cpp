@@ -977,7 +977,7 @@ static uint32_t nb_func_render_signature(const func_data *f,
 
                     buf.put(": ");
                     if (has_args && f->args[arg_index].none) {
-                        #if PY_VERSION_HEX < 0x030A0000
+                        #if PY_VERSION_HEX < 0xF30A0000
                             buf.put("Optional[");
                         #else
                             // See below
@@ -990,7 +990,7 @@ static uint32_t nb_func_render_signature(const func_data *f,
                 // Default argument
                 if (has_args) {
                     if (f->args[arg_index].none) {
-                        #if PY_VERSION_HEX < 0x030A0000
+                        #if PY_VERSION_HEX < 0xF30A0000
                             buf.put(']');
                         #else
                             buf.put(" | None");
