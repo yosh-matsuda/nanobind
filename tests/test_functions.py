@@ -372,3 +372,14 @@ def test40_nb_signature():
             (r"def test_07(arg0: int, arg1: int, /, *args, **kwargs) -> tuple[int, int]", None),
             (r"def test_07(a: int, b: int, *myargs, **mykwargs) -> tuple[int, int]", None)
         )
+
+def test41_constant_values():
+    assert t.test_41(True) is True
+    assert t.test_41(False) is False
+    assert t.test_41(None) is None
+    assert t.test_41() is None
+    assert (
+        t.test_41.__doc__ == "test_41(arg: Literal[True], /) -> Literal[True]\n"
+        "test_41(arg: Literal[False], /) -> Literal[False]\n"
+        "test_41(arg: Optional[Literal[None]] = None) -> Literal[None]"
+    )

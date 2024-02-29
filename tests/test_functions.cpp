@@ -241,4 +241,9 @@ NB_MODULE(test_functions_ext, m) {
 
     m.def("test_del_list", [](nb::list l) { nb::del(l[2]); });
     m.def("test_del_dict", [](nb::dict l) { nb::del(l["a"]); });
+
+    // Test built-in constant
+    m.def("test_41", [](nb::true_) { return nb::true_(); });
+    m.def("test_41", [](nb::false_) { return nb::false_(); });
+    m.def("test_41", [](nb::none) { return nb::none(); }, "arg"_a = nb::none());
 }
