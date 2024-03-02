@@ -77,7 +77,7 @@ SKIP_LIST = [
     "__doc__", "__module__", "__name__", "__new__", "__builtins__",
     "__cached__", "__path__", "__version__", "__spec__", "__loader__",
     "__package__", "__nb_signature__", "__class_getitem__", "__orig_bases__",
-    "__file__", "__dict__", "__weakref__", "@entries"
+    "__file__", "__dict__", "__weakref__", "__str__", "__repr__", "@entries"
 ]
 # fmt: on
 
@@ -955,7 +955,6 @@ class StubGen:
 
         s += "class _Enum:\n"
         s += "    def __init__(self, arg: object, /) -> None: ...\n"
-        s += "    def __repr__(self, /) -> str: ...\n"
         s += "    def __hash__(self, /) -> int: ...\n"
         s += "    def __int__(self, /) -> int: ...\n"
         s += "    def __index__(self, /) -> int: ...\n"
