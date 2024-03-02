@@ -69,7 +69,7 @@ ENUM_OPS = [
     "add", "sub", "mul", "floordiv", "eq", "ne", "gt", "ge", "lt", "le",
     "index", "repr", "hash", "int", "rshift", "lshift", "and", "or", "xor",
     "neg", "abs", "invert",
-] 
+]
 
 
 # Exclude various standard elements found in modules, classes, etc.
@@ -517,7 +517,7 @@ class StubGen:
 
         - "NoneType" -> "None"
 
-        - "ndarray[...]" -> "Annotated[ArrayLike, dict(...)]"
+        - "ndarray[...]" -> "Annotated[NDArray, dict(...)]"
 
         - "collections.abc.X" -> "X"
           (with "from collections.abc import X" added at top)
@@ -529,16 +529,29 @@ class StubGen:
         # Process nd-array type annotations so that MyPy accepts them
         def process_ndarray(m: re.Match) -> str:
             s = m.group(2)
+            arraylike = self.import_object("numpy.typing", "ArrayLike")
 
-            ndarray = self.import_object("numpy.typing", "ArrayLike")
-            s = re.sub(r"dtype=([\w]*)\b", r"dtype='\g<1>'", s)
-            s = s.replace("*", "None")
+            if not s:
+                return arraylike
 
-            if s:
+            m_dtype = re.match(r"^(.*?)\s*,?\s*dtype=([\w]+)\s*,?\s*(.*?)$", s)
+
+            if not m_dtype:
                 annotated = self.import_object("typing", "Annotated")
-                return f"{annotated}[{ndarray}, dict({s})]"
+                return f"{annotated}[{arraylike}, dict({s})]"
+
+            dtype = f"numpy.{m_dtype.group(2)}".replace("bool", "bool_")
+            if m_dtype.group(1) and m_dtype.group(3):
+                annotation = f"{m_dtype.group(1)}, {m_dtype.group(3)}]"
             else:
-                return ndarray
+                annotation = m_dtype.group(1) + m_dtype.group(3)
+            ndarray = self.import_object("numpy.typing", "NDArray")
+            if annotation:
+                annotated = self.import_object("typing", "Annotated")
+                return f"{annotated}[{ndarray}[{dtype}], dict({annotation})]"
+            else:
+                return f"{ndarray}[{dtype}]"
+
 
         s = self.ndarray_re.sub(process_ndarray, s)
 
