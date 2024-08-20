@@ -597,4 +597,15 @@ def test43_wrappers_set():
 
 def test44_hash():
     value = (1, 2, 3)
-    assert t.hash_it(value) == hash(value);
+    assert t.hash_it(value) == hash(value)
+
+def test4X_constant_values():
+    assert t.test_41(True) is True
+    assert t.test_41(False) is False
+    assert t.test_41(None) is None
+    assert t.test_41() is None
+    assert (
+        t.test_41.__doc__ == "test_41(arg: typing.Literal[True], /) -> typing.Literal[True]\n"
+        "test_41(arg: typing.Literal[False], /) -> typing.Literal[False]\n"
+        "test_41(arg: Optional[typing.Literal[None]] = None) -> typing.Literal[None]"
+    )

@@ -361,4 +361,9 @@ NB_MODULE(test_functions_ext, m) {
     });
 
     m.def("hash_it", [](nb::handle h) { return nb::hash(h); });
+
+    // Test built-in constant
+    m.def("test_4X", [](nb::true_) { return nb::true_(); });
+    m.def("test_4X", [](nb::false_) { return nb::false_(); });
+    m.def("test_4X", [](nb::none) { return nb::none(); }, "arg"_a = nb::none());
 }

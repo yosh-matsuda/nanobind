@@ -52,7 +52,7 @@ PyObject *enum_create(enum_init_data *ed) noexcept {
                             arg("qualname") = qualname);
 
     scope.attr(name) = result;
-    result.attr("__doc__") = ed->docstr ? str(ed->docstr) : none();
+    result.attr("__doc__") = ed->docstr ? str(ed->docstr) : none().release();
 
     if (is_arithmetic)
         result.attr("__str__") = enum_mod.attr("Enum").attr("__str__");
@@ -124,7 +124,7 @@ void enum_append(PyObject *tp_, const char *name_, int64_t value_,
     el.attr("__init__")(val);
     el.attr("_sort_order_") = len(member_names);
     el.attr("_value_") = val;
-    el.attr("__doc__") = doc ? str(doc) : none();
+    el.attr("__doc__") = doc ? str(doc) : none().release();
 
     // Compatibility with nanobind 1.x
     el.attr("__name__") = name;
