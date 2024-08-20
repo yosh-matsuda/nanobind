@@ -352,12 +352,21 @@ NB_TYPED_NAME_PYTHON38(type_object, NB_TYPING_TYPE)
 #endif
 
 template <typename T, typename... Ts> struct type_caster<typed<T, Ts...>> {
+private:
+    template<typename U> static constexpr auto param_name() {
+        // ellipsis type should be placed as "..." in parameters of generics
+        if constexpr (std::is_same_v<U, ellipsis>)
+            return const_name("...");
+        else
+            return make_caster<U>::Name;
+    }
+
+public:
     using Caster = make_caster<T>;
     using Typed = typed<T, Ts...>;
 
     NB_TYPE_CASTER(Typed, typed_name<intrinsic_t<T>>::Name + const_name("[") +
-                              concat(make_caster<Ts>::Name...) +
-                              const_name("]"))
+                              concat(param_name<Ts>()...) + const_name("]"))
 
     bool from_python(handle src, uint8_t flags, cleanup_list *cleanup) noexcept {
         Caster caster;
