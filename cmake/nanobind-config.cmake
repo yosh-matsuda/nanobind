@@ -232,7 +232,7 @@ function (nanobind_build_library TARGET_NAME)
     ${Python_INCLUDE_DIRS}
     ${NB_DIR}/include)
 
-  target_compile_features(${TARGET_NAME} PUBLIC cxx_std_17)
+  target_compile_features(${TARGET_NAME} PUBLIC cxx_std_20)
   nanobind_set_visibility(${TARGET_NAME})
 endfunction()
 
