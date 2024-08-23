@@ -807,11 +807,20 @@ NB_NOINLINE char *extract_name(const char *cmd, const char *prefix, const char *
           cmd, s, prefix);
     p += prefix_len;
 
-    // Find the opening parenthesis
+    // Find the opening parenthesis or bracket
+#if PY_VERSION_HEX >= 0x030C0000
+    const char *p2 = strchr(p, '(');
+    const char *p3 = strchr(p, '[');
+    p2 = p2 == nullptr ? p3 : (p3 == nullptr ? p2 : (p2 < p3 ? p2 : p3));
+    check(p2 != nullptr,
+          "%s(): last line of custom signature \"%s\" must contain an opening "
+          "parenthesis (\"(\") or bracket (\"[\")!", cmd, s);
+#else
     const char *p2 = strchr(p, '(');
     check(p2 != nullptr,
           "%s(): last line of custom signature \"%s\" must contain an opening "
           "parenthesis (\"(\")!", cmd, s);
+#endif
 
     // A few sanity checks
     size_t len = strlen(p);
