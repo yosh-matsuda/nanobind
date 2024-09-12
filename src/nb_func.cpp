@@ -101,6 +101,7 @@ void nb_func_dealloc(PyObject *self) {
                     Py_XDECREF(arg.value);
                     Py_XDECREF(arg.name_py);
                     free((char *) arg.signature);
+                    free((char *) arg.sig_arg);
                 }
             }
 
@@ -139,8 +140,8 @@ void nb_bound_method_dealloc(PyObject *self) {
 }
 
 static arg_data method_args[2] = {
-    { "self", nullptr, nullptr, nullptr, false, false },
-    { nullptr, nullptr, nullptr, nullptr, false, false }
+    { "self", nullptr, nullptr, nullptr, nullptr, false, false },
+    { nullptr, nullptr, nullptr, nullptr, nullptr, false, false }
 };
 
 static bool set_builtin_exception_status(builtin_exception &e) {
@@ -375,6 +376,7 @@ PyObject *nb_func_new(const void *in_) noexcept {
             }
             a.none |= a.value == Py_None;
             a.signature = a.signature ? strdup_check(a.signature) : nullptr;
+            a.sig_arg = a.sig_arg ? strdup_check(a.sig_arg) : nullptr;
             Py_XINCREF(a.value);
         }
     }
@@ -952,6 +954,7 @@ static uint32_t nb_func_render_signature(const func_data *f,
 
     const std::type_info **descr_type = f->descr_types;
     bool rv = false;
+    bool skip_render_type = false;
 
     uint32_t arg_index = 0, n_default_args = 0;
     buf.put_dstr(f->name);
@@ -966,7 +969,8 @@ static uint32_t nb_func_render_signature(const func_data *f,
                 pc++;
                 if (!rv) {
                     while (*pc && *pc != '@')
-                        buf.put(*pc++);
+                        if (skip_render_type) pc++;
+                        else buf.put(*pc++);
                     if (*pc == '@')
                         pc++;
                     while (*pc && *pc != '@')
@@ -977,7 +981,8 @@ static uint32_t nb_func_render_signature(const func_data *f,
                     if (*pc == '@')
                         pc++;
                     while (*pc && *pc != '@')
-                        buf.put(*pc++);
+                        if (skip_render_type) pc++;
+                        else buf.put(*pc++);
                 }
                 break;
 
@@ -989,9 +994,9 @@ static uint32_t nb_func_render_signature(const func_data *f,
                     if (has_var_kwargs && arg_index + 1 == f->nargs) {
                         buf.put("**");
                         buf.put_dstr(arg_name ? arg_name : "kwargs");
-                        if (*f->args_type != '\0') {
+                        if (has_args && f->args[arg_index].sig_arg) {
                             buf.put(": ");
-                            buf.put_dstr(f->args_type);
+                            buf.put_dstr(f->args[arg_index].sig_arg);
                         }
                         pc += 4; // strlen("dict")
                         break;
@@ -1001,9 +1006,9 @@ static uint32_t nb_func_render_signature(const func_data *f,
                         buf.put("*");
                         if (has_var_args) {
                             buf.put_dstr(arg_name ? arg_name : "args");
-                            if (*f->args_type != '\0') {
+                            if (has_args && f->args[arg_index].sig_arg) {
                                 buf.put(": ");
-                                buf.put_dstr(f->args_type);
+                                buf.put_dstr(f->args[arg_index].sig_arg);
                             }
                             pc += 5; // strlen("tuple")
                             break;
@@ -1043,6 +1048,10 @@ static uint32_t nb_func_render_signature(const func_data *f,
                         #else
                             // See below
                         #endif
+                    }
+                    if (has_args && f->args[arg_index].sig_arg) {
+                        buf.put_dstr(f->args[arg_index].sig_arg);
+                        skip_render_type = true;
                     }
                 }
                 break;
@@ -1095,13 +1104,14 @@ static uint32_t nb_func_render_signature(const func_data *f,
                 if (arg_index == f->nargs_pos && !has_args)
                     buf.put(", /");
 
+                skip_render_type = false;
                 break;
 
             case '%':
                 check(*descr_type,
                       "nb::detail::nb_func_render_signature(): missing type!");
 
-                if (!(is_method && arg_index == 0)) {
+                if (!(is_method && arg_index == 0) && !skip_render_type) {
                     auto it = internals->type_c2p_slow.find(*descr_type);
 
                     if (it != internals->type_c2p_slow.end()) {
@@ -1124,14 +1134,21 @@ static uint32_t nb_func_render_signature(const func_data *f,
                 break;
 
             case '-':
-                if (pc[1] == '>')
+                if (pc[1] == '>') {
                     rv = true;
+                    if (*f->ret_type != '\0') {
+                        buf.put("-> ");
+                        buf.put_dstr(f->ret_type);
+                        skip_render_type = true;
+                        break;
+                    }
+                }
                 buf.put(c);
                 break;
 
 
             default:
-                buf.put(c);
+                if (!skip_render_type) buf.put(c);
                 break;
         }
     }
