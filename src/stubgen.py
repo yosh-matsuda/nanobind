@@ -368,7 +368,7 @@ class StubGen:
         if type(fn).__name__ == "nb_func" and self.depth > 0:
             self.write_ln("@staticmethod")
 
-        if not docstr or not self.include_docstrings:
+        if not docstr or not self.include_docstrings or (name or "").startswith("_"):
             for s in sig_str.split("\n"):
                 self.write_ln(s)
             self.output = self.output[:-1] + ": ...\n"
@@ -841,7 +841,7 @@ class StubGen:
 
             # Ignore private members unless the user requests their inclusion
             if (
-                not self.include_private
+                (not self.include_private or (not ismodule(parent) and not isinstance(value, type)))
                 and name
                 and not is_type_alias
                 and len(name) > 2
