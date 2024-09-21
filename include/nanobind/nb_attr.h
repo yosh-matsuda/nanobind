@@ -28,7 +28,7 @@ struct arg_locked_v;
 
 // Basic function argument descriptor (no default value, not locked)
 struct arg {
-    NB_INLINE constexpr explicit arg(const char *name = nullptr) : name_(name), signature_(nullptr) { }
+    NB_INLINE constexpr explicit arg(const char *name = nullptr) : name_(name), signature_(nullptr), sig_arg_(nullptr) { }
 
     // operator= can be used to provide a default value
     template <typename T> NB_INLINE arg_v operator=(T &&value) const;
@@ -47,10 +47,15 @@ struct arg {
         return *this;
     }
 
+    NB_INLINE arg &sig_arg(const char *value) {
+        sig_arg_ = value;
+        return *this;
+    }
+
     // After lock(), this argument is locked
     NB_INLINE arg_locked lock();
 
-    const char *name_, *signature_;
+    const char *name_, *signature_, *sig_arg_;
     uint8_t convert_{ true };
     bool none_{ false };
 };
@@ -154,14 +159,14 @@ struct sig {
 
 struct is_getter { };
 
-struct args_type {
-    const char *value;
-    args_type(const char *type) : value(type) {}
-};
-
 struct self_type {
     const char *value;
     self_type(const char *type) : value(type) {}
+};
+
+struct ret_type {
+    const char *value;
+    ret_type(const char *type) : value(type) {}
 };
 
 struct docstring {
@@ -237,6 +242,7 @@ enum cast_flags : uint8_t {
 struct arg_data {
     const char *name;
     const char *signature;
+    const char *sig_arg;
     PyObject *name_py;
     PyObject *value;
     uint8_t flag;
@@ -281,8 +287,8 @@ template <size_t Size> struct func_data_prelim {
 
     const char *name;
     docstring *doc;
-    const char *args_type = "";
     const char *self_type = "";
+    const char *ret_type = "";
     PyObject *scope;
 
     // *WARNING*: nanobind regularly receives requests from users who run it
@@ -339,13 +345,13 @@ NB_INLINE void func_extra_apply(F &f, const sig &s, size_t &) {
 }
 
 template <typename F>
-NB_INLINE void func_extra_apply(F &f, const args_type &d, size_t &) {
-    f.args_type = d.value;
+NB_INLINE void func_extra_apply(F &f, const self_type &d, size_t &) {
+    f.self_type = d.value;
 }
 
 template <typename F>
-NB_INLINE void func_extra_apply(F &f, const self_type &d, size_t &) {
-    f.self_type = d.value;
+NB_INLINE void func_extra_apply(F &f, const ret_type &d, size_t &) {
+    f.ret_type = d.value;
 }
 
 template <typename F>
@@ -404,6 +410,7 @@ NB_INLINE void func_extra_apply(F &f, const arg &a, size_t &index) {
     arg.flag = flag;
     arg.name = a.name_;
     arg.signature = a.signature_;
+    arg.sig_arg = a.sig_arg_;
     arg.value = nullptr;
     index++;
 }
