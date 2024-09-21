@@ -91,6 +91,7 @@ SKIP_LIST = [
     "__package__", "__nb_signature__", "__class_getitem__", "__orig_bases__",
     "__file__", "__dict__", "__weakref__", "__format__", "__nb_enum__",
     "__firstlineno__", "__static_attributes__", "__annotations__", "__annotate__"
+    , "__str__", "__repr__"
 ]
 # fmt: on
 
