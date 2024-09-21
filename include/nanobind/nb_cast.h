@@ -409,6 +409,14 @@ template <typename T> NB_INLINE rv_policy infer_policy(rv_policy policy) {
             policy == rv_policy::reference_internal)
             policy = rv_policy::move;
     }
+#ifndef NDEBUG
+    if (std::is_const_v<std::remove_pointer_t<T>> && policy == rv_policy::reference) {
+        fail("nanobind::infer_policy: const pointer failed.");
+    }
+    if (std::is_const_v<std::remove_reference_t<T>> && policy == rv_policy::reference) {
+        fail("nanobind::infer_policy: const reference failed.");
+    }
+#endif
     return policy;
 }
 
