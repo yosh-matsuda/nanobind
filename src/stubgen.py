@@ -92,6 +92,7 @@ SKIP_LIST = [
     "__file__", "__dict__", "__weakref__", "__format__", "__nb_enum__",
     "__firstlineno__", "__static_attributes__", "__annotations__", "__annotate__"
     , "__str__", "__repr__"
+    , "__array_priority__"
 ]
 # fmt: on
 
@@ -304,7 +305,9 @@ class StubGen:
             docstr = docstr.replace("''", "\\'\\'")
             raw_str = "r"
         if len(docstr) > 70 or "\n" in docstr:
-            docstr = "\n" + docstr + "\n"
+            if docstr.split("\n")[0].endswith(":"):
+                docstr = "\n" + docstr
+            docstr = docstr + "\n"
         docstr = f'{raw_str}"""{docstr}"""\n'
         self.write_par(docstr)
 
@@ -584,7 +587,7 @@ class StubGen:
             self.write_ln(f"{name} = {typing.cast(enum.Enum, value).value}")
             if value.__doc__ and self.include_docstrings:
                 self.put_docstr(value.__doc__)
-            self.write("\n")
+                self.write("\n")
         elif self.is_function(tp) or isinstance(value, type):
             named_value = cast(NamedObject, value)
             same_toplevel_module = named_value.__module__.split(".")[0] == self.module.__name__.split(".")[0]
